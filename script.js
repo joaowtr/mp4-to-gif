@@ -1,4 +1,4 @@
-import { FFmpeg } from "https://unpkg.com/@ffmpeg/ffmpeg@0.12.6/dist/esm/index.js";
+import { FFmpeg } from "./ffmpeg-lib/index.js";
 import { fetchFile } from "https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js";
 
 const el = (id) => document.getElementById(id);
@@ -186,21 +186,14 @@ fileEl.addEventListener("change", (e) => {
   updateUiFile();
 });
 
-const tryLoad = async (base) => {
-  const coreURL = new URL(`${base}/ffmpeg-core.js`, location.href).toString();
-  const wasmURL = new URL(`${base}/ffmpeg-core.wasm`, location.href).toString();
-  const workerURL = new URL(`ffmpeg/worker.js`, location.href).toString();
-  await ffmpeg.load({ coreURL, wasmURL, workerURL });
+const tryLoad = async () => {
+  const coreURL = new URL(`ffmpeg/ffmpeg-core.js`, location.href).toString();
+  const wasmURL = new URL(`ffmpeg/ffmpeg-core.wasm`, location.href).toString();
+  await ffmpeg.load({ coreURL, wasmURL });
 };
 
 loadBtn.addEventListener("click", async () => {
   if (engineLoaded) return;
-
-  const bases = [
-    "ffmpeg",
-    "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm",
-    "https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm"
-  ];
 
   try {
     loadBtn.disabled = true;
@@ -209,20 +202,7 @@ loadBtn.addEventListener("click", async () => {
 
     ffmpeg.on("progress", ({ progress }) => setProgress(progress));
 
-    let ok = false;
-    let lastErr = null;
-
-    for (const b of bases) {
-      try {
-        await tryLoad(b);
-        ok = true;
-        break;
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-
-    if (!ok) throw lastErr || new Error("load_failed");
+    await tryLoad();
 
     engineLoaded = true;
     loadBtn.textContent = "Motor carregado";
@@ -231,7 +211,7 @@ loadBtn.addEventListener("click", async () => {
   } catch (e) {
     engineLoaded = false;
     loadBtn.disabled = false;
-    setStatus("Falha ao carregar o motor. Garanta /ffmpeg com ffmpeg-core.js, ffmpeg-core.wasm e worker.js.", "err");
+    setStatus("Falha ao carregar o motor. Garanta /ffmpeg com ffmpeg-core.js e ffmpeg-core.wasm, e /ffmpeg-lib com o pacote ESM.", "err");
     console.error(e);
   }
 });
