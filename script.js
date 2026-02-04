@@ -36,10 +36,13 @@ let meta = { duration: null, width: null, height: null };
 
 const fmtBytes = (bytes) => {
   if (!Number.isFinite(bytes) || bytes < 0) return "—";
-  const units = ["B","KB","MB","GB"];
+  const units = ["B", "KB", "MB", "GB"];
   let i = 0;
   let n = bytes;
-  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i++;
+  }
   return `${n.toFixed(i === 0 ? 0 : 2)} ${units[i]}`;
 };
 
@@ -63,7 +66,7 @@ const parseMetaFromLog = (log) => {
     const s = Number(durMatch[3]);
     meta.duration = h * 3600 + m * 60 + s;
   }
-  const videoLine = log.split("\n").find(l => l.includes("Video:"));
+  const videoLine = log.split("\n").find((l) => l.includes("Video:"));
   if (videoLine) {
     const resMatch = videoLine.match(/,\s*(\d{2,5})x(\d{2,5})[,\s]/);
     if (resMatch) {
@@ -85,7 +88,12 @@ const fmtTime = (sec) => {
 };
 
 const updateEstimate = () => {
-  if (!selectedFile || !Number.isFinite(meta.duration) || !Number.isFinite(meta.width) || !Number.isFinite(meta.height)) {
+  if (
+    !selectedFile ||
+    !Number.isFinite(meta.duration) ||
+    !Number.isFinite(meta.width) ||
+    !Number.isFinite(meta.height)
+  ) {
     estEl.textContent = "—";
     estHintEl.textContent = "";
     return;
@@ -106,7 +114,7 @@ const updateEstimate = () => {
   const frames = meta.duration * fps;
   const pixels = w * h;
   const motionFactor = 0.22;
-  const bytesPerFrame = Math.max(400, pixels * motionFactor / 8);
+  const bytesPerFrame = Math.max(400, (pixels * motionFactor) / 8);
   const overhead = 160 * 1024;
   const est = frames * bytesPerFrame + overhead;
 
@@ -137,7 +145,8 @@ const updateUiFile = () => {
   inNameEl.textContent = selectedFile.name;
   mp4SizeEl.textContent = fmtBytes(selectedFile.size);
   durEl.textContent = fmtTime(meta.duration);
-  resEl.textContent = (Number.isFinite(meta.width) && Number.isFinite(meta.height)) ? `${meta.width}×${meta.height}` : "—";
+  resEl.textContent =
+    Number.isFinite(meta.width) && Number.isFinite(meta.height) ? `${meta.width}×${meta.height}` : "—";
   updateEstimate();
 };
 
@@ -200,34 +209,30 @@ loadBtn.addEventListener("click", async () => {
 
     ffmpeg.on("progress", ({ progress }) => setProgress(progress));
 
+    let ok = false;
     let lastErr = null;
 
     for (const b of bases) {
-      const coreURL = new URL(`${b}/ffmpeg-core.js`, location.href).toString();
-      const wasmURL = new URL(`${b}/ffmpeg-core.wasm`, location.href).toString();
-
-      console.log("Tentando carregar FFmpeg:", { base: b, coreURL, wasmURL });
-
       try {
-        await ffmpeg.load({ coreURL, wasmURL });
-        engineLoaded = true;
-        loadBtn.textContent = "Motor carregado";
-        setStatus("Motor carregado. Pronto para converter.", "ok");
-        convertBtn.disabled = !selectedFile;
-        console.log("FFmpeg carregado com sucesso:", b);
-        return;
+        await tryLoad(b);
+        ok = true;
+        break;
       } catch (e) {
         lastErr = e;
-        console.error("Falhou em:", b, e);
       }
     }
 
-    throw lastErr || new Error("Falha desconhecida ao carregar");
+    if (!ok) throw lastErr || new Error("load_failed");
+
+    engineLoaded = true;
+    loadBtn.textContent = "Motor carregado";
+    setStatus("Motor carregado. Pronto para converter.", "ok");
+    convertBtn.disabled = !selectedFile;
   } catch (e) {
     engineLoaded = false;
     loadBtn.disabled = false;
-    setStatus("Falha ao carregar o motor. Abra o Console (F12) e veja o erro.", "err");
-    console.error("Erro final load:", e);
+    setStatus("Falha ao carregar o motor. Garanta /ffmpeg com ffmpeg-core.js, ffmpeg-core.wasm e worker.js.", "err");
+    console.error(e);
   }
 });
 
@@ -237,9 +242,16 @@ const extractMeta = async () => {
   await ffmpeg.writeFile(inName, await fetchFile(selectedFile));
 
   let captured = "";
-  const logHandler = ({ message }) => { captured += message + "\n"; };
+  const logHandler = ({ message }) => {
+    captured += message + "\n";
+  };
   ffmpeg.on("log", logHandler);
-  try { await ffmpeg.exec(["-hide_banner", "-i", inName]); } catch (e) {} finally { ffmpeg.off("log", logHandler); }
+  try {
+    await ffmpeg.exec(["-hide_banner", "-i", inName]);
+  } catch (e) {
+  } finally {
+    ffmpeg.off("log", logHandler);
+  }
 
   parseMetaFromLog(captured);
   updateUiFile();
@@ -248,13 +260,19 @@ const extractMeta = async () => {
 const buildFilters = () => {
   const fps = Number(fpsEl.value);
   const maxW = Number(maxWEl.value || 0);
-  const scalePart = (Number.isFinite(maxW) && maxW > 0) ? `scale='min(iw,${maxW})':-2:flags=lanczos` : "scale=iw:ih:flags=lanczos";
+  const scalePart = Number.isFinite(maxW) && maxW > 0 ? `scale='min(iw,${maxW})':-2:flags=lanczos` : "scale=iw:ih:flags=lanczos";
   return `fps=${fps},${scalePart}`;
 };
 
 const convert = async () => {
-  if (!engineLoaded) { setStatus("Carregue o motor primeiro.", "warn"); return; }
-  if (!selectedFile) { setStatus("Selecione um MP4 primeiro.", "warn"); return; }
+  if (!engineLoaded) {
+    setStatus("Carregue o motor primeiro.", "warn");
+    return;
+  }
+  if (!selectedFile) {
+    setStatus("Selecione um MP4 primeiro.", "warn");
+    return;
+  }
 
   convertBtn.disabled = true;
   loadBtn.disabled = true;
@@ -280,12 +298,12 @@ const convert = async () => {
 
     setStatus("Gerando paleta (qualidade alta)...", "warn");
     setProgress(0);
-    await ffmpeg.exec(["-hide_banner","-i",inName,"-vf",`${vf},palettegen=stats_mode=diff`,paletteName]);
+    await ffmpeg.exec(["-hide_banner", "-i", inName, "-vf", `${vf},palettegen=stats_mode=diff`, paletteName]);
 
     setStatus("Convertendo para GIF...", "warn");
     setProgress(0);
     const useFilter = `[0:v]${vf}[x];[x][1:v]paletteuse=dither=${dither}:diff_mode=rectangle`;
-    await ffmpeg.exec(["-hide_banner","-i",inName,"-i",paletteName,"-lavfi",useFilter,"-loop",loop,outGif]);
+    await ffmpeg.exec(["-hide_banner", "-i", inName, "-i", paletteName, "-lavfi", useFilter, "-loop", loop, outGif]);
 
     const data = await ffmpeg.readFile(outGif);
     const blob = new Blob([data.buffer], { type: "image/gif" });
@@ -305,6 +323,7 @@ const convert = async () => {
     setProgress(1);
   } catch (e) {
     setStatus("Erro na conversão. Tente reduzir FPS e/ou definir largura máxima.", "err");
+    console.error(e);
     setProgress(0);
   } finally {
     loadBtn.disabled = false;
