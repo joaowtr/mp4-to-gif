@@ -194,7 +194,7 @@ loadBtn.addEventListener("click", async () => {
     ffmpeg.on("progress", ({ progress }) => setProgress(progress));
 
     const bases = [
-      "./ffmpeg",
+      "/mp4-to-gif/ffmpeg",
       "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm",
       "https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm"
     ];
