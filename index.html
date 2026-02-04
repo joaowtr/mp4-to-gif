@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MP4 → GIF (Alta Qualidade)</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <h1>MP4 → GIF (Alta Qualidade)</h1>
+        <div class="sub">Conversão local no navegador. FPS, largura máxima, tamanho estimado e download.</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <label>Selecione um MP4</label>
+        <input id="file" class="control" type="file" accept="video/mp4,video/*" />
+
+        <div class="row">
+          <div class="col">
+            <label>FPS do GIF</label>
+            <div class="inline">
+              <input id="fps" class="control range" type="range" min="5" max="60" value="15" />
+              <span class="pill"><span class="muted">FPS:</span> <strong id="fpsVal">15</strong></span>
+            </div>
+          </div>
+
+          <div class="col">
+            <label>Largura máxima</label>
+            <div class="inline">
+              <input id="maxW" class="control" type="number" min="0" step="1" value="0" placeholder="0 = original" />
+              <span class="pill"><span class="muted">0 =</span> <strong>Original</strong></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col">
+            <label>Dithering</label>
+            <select id="dither" class="control">
+              <option value="bayer:bayer_scale=2">Bayer (ótima qualidade)</option>
+              <option value="sierra2_4a">Sierra2_4A (equilibrado)</option>
+              <option value="floyd_steinberg">Floyd-Steinberg (nítido)</option>
+              <option value="none">Sem dithering (mais leve)</option>
+            </select>
+          </div>
+
+          <div class="col">
+            <label>Loop</label>
+            <select id="loop" class="control">
+              <option value="0">Infinito</option>
+              <option value="1">1 vez</option>
+              <option value="2">2 vezes</option>
+              <option value="3">3 vezes</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <div class="row">
+          <button id="loadBtn" class="btn ghost" disabled>Carregar motor</button>
+          <button id="convertBtn" class="btn primary" disabled>Converter para GIF</button>
+          <button id="resetBtn" class="btn ghost" disabled>Limpar</button>
+        </div>
+
+        <div class="sp"></div>
+        <div class="bar"><div id="progFill"></div></div>
+        <div id="status" class="status muted">Selecione um MP4 para começar.</div>
+
+        <div class="note">
+          Para qualidade sem explodir tamanho: FPS 12–20 e largura máxima 480–720. GIF é pesado e varia muito com movimento.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="inline between">
+          <div class="pill"><span class="muted">Entrada:</span> <strong id="inName">—</strong></div>
+          <div class="pill"><span class="muted">Saída:</span> <strong id="outName">—</strong></div>
+        </div>
+
+        <div class="kvs">
+          <div class="kv">
+            <div class="k">Tamanho do MP4</div>
+            <div class="v" id="mp4Size">—</div>
+          </div>
+          <div class="kv">
+            <div class="k">Duração</div>
+            <div class="v" id="dur">—</div>
+          </div>
+          <div class="kv">
+            <div class="k">Resolução</div>
+            <div class="v" id="res">—</div>
+          </div>
+          <div class="kv">
+            <div class="k">Estimativa do GIF</div>
+            <div class="v" id="est">—</div>
+            <div class="small muted" id="estHint"></div>
+          </div>
+          <div class="kv full">
+            <div class="k">Tamanho final do GIF</div>
+            <div class="v" id="gifSize">—</div>
+          </div>
+        </div>
+
+        <div class="hr"></div>
+
+        <a id="download" class="btn primary fullw" style="display:none" download="convertido.gif">Baixar GIF</a>
+
+        <div id="previewWrap" class="preview" style="display:none">
+          <div class="pill"><span class="muted">Prévia</span></div>
+          <div class="imgbox">
+            <img id="preview" alt="Prévia do GIF" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="script.js"></script>
+</body>
+</html>
