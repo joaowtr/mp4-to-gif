@@ -186,6 +186,13 @@ const tryLoad = async (base) => {
 
 loadBtn.addEventListener("click", async () => {
   if (engineLoaded) return;
+
+  const bases = [
+    "ffmpeg",
+    "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm",
+    "https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm"
+  ];
+
   try {
     loadBtn.disabled = true;
     setStatus("Carregando motor de conversão (FFmpeg)...", "warn");
@@ -193,30 +200,34 @@ loadBtn.addEventListener("click", async () => {
 
     ffmpeg.on("progress", ({ progress }) => setProgress(progress));
 
-    const bases = [
-      "/mp4-to-gif/ffmpeg",
-      "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm",
-      "https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm"
-    ];
+    let lastErr = null;
 
-    let ok = false;
     for (const b of bases) {
-      try {
-        await tryLoad(b);
-        ok = true;
-        break;
-      } catch (e) {}
-    }
-    if (!ok) throw new Error("load_failed");
+      const coreURL = new URL(`${b}/ffmpeg-core.js`, location.href).toString();
+      const wasmURL = new URL(`${b}/ffmpeg-core.wasm`, location.href).toString();
 
-    engineLoaded = true;
-    loadBtn.textContent = "Motor carregado";
-    setStatus("Motor carregado. Pronto para converter.", "ok");
-    convertBtn.disabled = !selectedFile;
+      console.log("Tentando carregar FFmpeg:", { base: b, coreURL, wasmURL });
+
+      try {
+        await ffmpeg.load({ coreURL, wasmURL });
+        engineLoaded = true;
+        loadBtn.textContent = "Motor carregado";
+        setStatus("Motor carregado. Pronto para converter.", "ok");
+        convertBtn.disabled = !selectedFile;
+        console.log("FFmpeg carregado com sucesso:", b);
+        return;
+      } catch (e) {
+        lastErr = e;
+        console.error("Falhou em:", b, e);
+      }
+    }
+
+    throw lastErr || new Error("Falha desconhecida ao carregar");
   } catch (e) {
     engineLoaded = false;
     loadBtn.disabled = false;
-    setStatus("Falha ao carregar o motor. Garanta a pasta /ffmpeg com ffmpeg-core.js e ffmpeg-core.wasm.", "err");
+    setStatus("Falha ao carregar o motor. Abra o Console (F12) e veja o erro.", "err");
+    console.error("Erro final load:", e);
   }
 });
 
