@@ -9,8 +9,12 @@ const fpsValEl = el("fpsVal");
 const maxWEl = el("maxW");
 const ditherEl = el("dither");
 const loopEl = el("loop");
+const maxColorsEl = el("maxColors");
+const maxColorsValEl = el("maxColorsVal");
+const optPresetEl = el("optPreset");
 
 const loadBtn = el("loadBtn");
+const autoBtn = el("autoBtn");
 const convertBtn = el("convertBtn");
 const resetBtn = el("resetBtn");
 const statusEl = el("status");
@@ -58,24 +62,6 @@ const setProgress = (p) => {
   progFill.style.width = `${v}%`;
 };
 
-const parseMetaFromLog = (log) => {
-  const durMatch = log.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
-  if (durMatch) {
-    const h = Number(durMatch[1]);
-    const m = Number(durMatch[2]);
-    const s = Number(durMatch[3]);
-    meta.duration = h * 3600 + m * 60 + s;
-  }
-  const videoLine = log.split("\n").find((l) => l.includes("Video:"));
-  if (videoLine) {
-    const resMatch = videoLine.match(/,\s*(\d{2,5})x(\d{2,5})[,\s]/);
-    if (resMatch) {
-      meta.width = Number(resMatch[1]);
-      meta.height = Number(resMatch[2]);
-    }
-  }
-};
-
 const fmtTime = (sec) => {
   if (!Number.isFinite(sec) || sec <= 0) return "—";
   const s = Math.round(sec);
@@ -87,20 +73,47 @@ const fmtTime = (sec) => {
   return `${r}s`;
 };
 
-const updateEstimate = () => {
-  if (
-    !selectedFile ||
-    !Number.isFinite(meta.duration) ||
-    !Number.isFinite(meta.width) ||
-    !Number.isFinite(meta.height)
-  ) {
-    estEl.textContent = "—";
-    estHintEl.textContent = "";
-    return;
-  }
+const getMaxColors = () => {
+  const v = Number(maxColorsEl.value);
+  if (!Number.isFinite(v)) return 128;
+  return clamp(Math.round(v), 32, 256);
+};
 
-  const fps = Number(fpsEl.value);
-  const maxW = Number(maxWEl.value || 0);
+const syncPresetFromSlider = () => {
+  const v = String(getMaxColors());
+  const presetVals = new Set(["256", "192", "128", "96", "64"]);
+  optPresetEl.value = presetVals.has(v) ? v : "custom";
+};
+
+const applyPreset = (val) => {
+  if (val === "custom") return;
+  const n = clamp(Number(val), 32, 256);
+  maxColorsEl.value = String(n);
+  maxColorsValEl.textContent = String(n);
+  updateEstimate();
+};
+
+const readVideoMeta = async () => {
+  if (!selectedFile) return;
+  const url = URL.createObjectURL(selectedFile);
+  const v = document.createElement("video");
+  v.preload = "metadata";
+  v.muted = true;
+  await new Promise((resolve) => {
+    v.onloadedmetadata = () => resolve();
+    v.onerror = () => resolve();
+    v.src = url;
+  });
+  URL.revokeObjectURL(url);
+  if (Number.isFinite(v.duration)) meta.duration = v.duration;
+  if (Number.isFinite(v.videoWidth) && Number.isFinite(v.videoHeight) && v.videoWidth > 0 && v.videoHeight > 0) {
+    meta.width = v.videoWidth;
+    meta.height = v.videoHeight;
+  }
+};
+
+const estimateBytes = (fps, maxW, maxColors, dither) => {
+  if (!selectedFile || !Number.isFinite(meta.duration) || !Number.isFinite(meta.width) || !Number.isFinite(meta.height)) return Infinity;
 
   let w = meta.width;
   let h = meta.height;
@@ -113,13 +126,41 @@ const updateEstimate = () => {
 
   const frames = meta.duration * fps;
   const pixels = w * h;
+
   const motionFactor = 0.22;
-  const bytesPerFrame = Math.max(400, (pixels * motionFactor) / 8);
+  const ditherFactor = dither === "none" ? 0.88 : 1.0;
+  const colorFactor = Math.pow(maxColors / 256, 0.85);
+
+  const bytesPerFrame = Math.max(320, (pixels * motionFactor * ditherFactor * colorFactor) / 8);
   const overhead = 160 * 1024;
-  const est = frames * bytesPerFrame + overhead;
+
+  return frames * bytesPerFrame + overhead;
+};
+
+const updateEstimate = () => {
+  if (!selectedFile || !Number.isFinite(meta.duration) || !Number.isFinite(meta.width) || !Number.isFinite(meta.height)) {
+    estEl.textContent = "—";
+    estHintEl.textContent = "";
+    return;
+  }
+
+  const fps = Number(fpsEl.value);
+  const maxW = Number(maxWEl.value || 0);
+  const maxColors = getMaxColors();
+  const dither = ditherEl.value;
+
+  const est = estimateBytes(fps, maxW, maxColors, dither);
+
+  let w = meta.width;
+  let h = meta.height;
+  if (Number.isFinite(maxW) && maxW > 0 && w > maxW) {
+    const ratio = maxW / w;
+    w = Math.round(w * ratio);
+    h = Math.round(h * ratio);
+  }
 
   const hintParts = [];
-  hintParts.push(`Baseado em duração × FPS e resolução.`);
+  hintParts.push(`Duração × FPS, resolução e ${maxColors} cores.`);
   if (maxW > 0 && meta.width > maxW) hintParts.push(`Redimensionado para ~${w}×${h}.`);
   hintParts.push(`Pode variar com movimento e detalhes.`);
 
@@ -145,8 +186,7 @@ const updateUiFile = () => {
   inNameEl.textContent = selectedFile.name;
   mp4SizeEl.textContent = fmtBytes(selectedFile.size);
   durEl.textContent = fmtTime(meta.duration);
-  resEl.textContent =
-    Number.isFinite(meta.width) && Number.isFinite(meta.height) ? `${meta.width}×${meta.height}` : "—";
+  resEl.textContent = Number.isFinite(meta.width) && Number.isFinite(meta.height) ? `${meta.width}×${meta.height}` : "—";
   updateEstimate();
 };
 
@@ -159,6 +199,7 @@ const resetAll = async () => {
   updateUiFile();
   convertBtn.disabled = true;
   resetBtn.disabled = true;
+  autoBtn.disabled = true;
   downloadEl.style.display = "none";
   previewWrap.style.display = "none";
 };
@@ -170,7 +211,15 @@ fpsEl.addEventListener("input", () => {
 
 maxWEl.addEventListener("input", updateEstimate);
 
-fileEl.addEventListener("change", (e) => {
+maxColorsEl.addEventListener("input", () => {
+  maxColorsValEl.textContent = String(getMaxColors());
+  syncPresetFromSlider();
+  updateEstimate();
+});
+
+optPresetEl.addEventListener("change", () => applyPreset(optPresetEl.value));
+
+fileEl.addEventListener("change", async (e) => {
   selectedFile = e.target.files?.[0] || null;
   meta = { duration: null, width: null, height: null };
   setProgress(0);
@@ -181,8 +230,10 @@ fileEl.addEventListener("change", (e) => {
   gifSizeEl.textContent = "—";
   resetBtn.disabled = !selectedFile;
   loadBtn.disabled = false;
+  autoBtn.disabled = !selectedFile;
   convertBtn.disabled = true;
   setStatus(selectedFile ? "Arquivo selecionado. Clique em “Carregar motor”." : "Selecione um MP4 para começar.", selectedFile ? "warn" : "muted");
+  if (selectedFile) await readVideoMeta();
   updateUiFile();
 });
 
@@ -211,31 +262,85 @@ loadBtn.addEventListener("click", async () => {
   } catch (e) {
     engineLoaded = false;
     loadBtn.disabled = false;
-    setStatus("Falha ao carregar o motor. Garanta /ffmpeg com ffmpeg-core.js e ffmpeg-core.wasm, e /ffmpeg-lib com o pacote ESM.", "err");
+    setStatus("Falha ao carregar o motor. Garanta /ffmpeg com ffmpeg-core.js e ffmpeg-core.wasm, e /ffmpeg-lib no site.", "err");
     console.error(e);
   }
 });
 
-const extractMeta = async () => {
-  meta = { duration: null, width: null, height: null };
-  const inName = "input.mp4";
-  await ffmpeg.writeFile(inName, await fetchFile(selectedFile));
-
-  let captured = "";
-  const logHandler = ({ message }) => {
-    captured += message + "\n";
-  };
-  ffmpeg.on("log", logHandler);
-  try {
-    await ffmpeg.exec(["-hide_banner", "-i", inName]);
-  } catch (e) {
-  } finally {
-    ffmpeg.off("log", logHandler);
+const autoOptimize = async () => {
+  if (!selectedFile) {
+    setStatus("Selecione um MP4 primeiro.", "warn");
+    return;
   }
 
-  parseMetaFromLog(captured);
-  updateUiFile();
+  if (!Number.isFinite(meta.duration) || !Number.isFinite(meta.width) || !Number.isFinite(meta.height)) {
+    await readVideoMeta();
+    updateUiFile();
+  }
+
+  if (!Number.isFinite(meta.duration) || !Number.isFinite(meta.width) || !Number.isFinite(meta.height)) {
+    setStatus("Não consegui ler duração/resolução desse vídeo.", "err");
+    return;
+  }
+
+  const mp4MB = selectedFile.size / (1024 * 1024);
+  const targetMB = mp4MB <= 8 ? 15 : mp4MB <= 20 ? 25 : 35;
+  const targetBytes = targetMB * 1024 * 1024;
+
+  const fpsCandidates = [20, 18, 15, 12, 10, 8];
+  const widthCandidates = meta.width >= 1200 ? [720, 640, 560, 480, 400] : meta.width >= 900 ? [720, 640, 480, 400] : [0, 720, 640, 480, 400];
+  const colorCandidates = [128, 96, 64];
+  const ditherCandidates = ["bayer:bayer_scale=2", "sierra2_4a", "none"];
+
+  let best = null;
+
+  for (const fps of fpsCandidates) {
+    for (const maxW of widthCandidates) {
+      for (const colors of colorCandidates) {
+        for (const dither of ditherCandidates) {
+          const est = estimateBytes(fps, maxW, colors, dither);
+          if (!Number.isFinite(est)) continue;
+
+          const qualityScore =
+            (fps >= 15 ? 3 : fps >= 12 ? 2 : 1) +
+            (colors >= 128 ? 3 : colors >= 96 ? 2 : 1) +
+            (maxW === 0 ? 3 : maxW >= 640 ? 2 : 1) +
+            (dither === "none" ? 0 : 1);
+
+          const candidate = { fps, maxW, colors, dither, est, qualityScore };
+
+          if (est <= targetBytes) {
+            if (!best) best = candidate;
+            else if (candidate.qualityScore > best.qualityScore) best = candidate;
+            else if (candidate.qualityScore === best.qualityScore && candidate.est < best.est) best = candidate;
+          } else if (!best) {
+            best = candidate;
+          } else if (best.est > targetBytes && candidate.est < best.est) {
+            best = candidate;
+          }
+        }
+      }
+    }
+  }
+
+  if (!best) {
+    setStatus("Não consegui gerar uma sugestão automática.", "err");
+    return;
+  }
+
+  fpsEl.value = String(best.fps);
+  fpsValEl.textContent = String(best.fps);
+  maxWEl.value = String(best.maxW);
+  maxColorsEl.value = String(best.colors);
+  maxColorsValEl.textContent = String(best.colors);
+  syncPresetFromSlider();
+  ditherEl.value = best.dither;
+
+  updateEstimate();
+  setStatus(`Auto otimizado: ${best.fps} FPS, ${best.maxW === 0 ? "largura original" : `máx ${best.maxW}px`}, ${best.colors} cores, dithering ${best.dither === "none" ? "off" : "on"}.`, "ok");
 };
+
+autoBtn.addEventListener("click", autoOptimize);
 
 const buildFilters = () => {
   const fps = Number(fpsEl.value);
@@ -256,6 +361,7 @@ const convert = async () => {
 
   convertBtn.disabled = true;
   loadBtn.disabled = true;
+  autoBtn.disabled = true;
   resetBtn.disabled = true;
   downloadEl.style.display = "none";
   previewWrap.style.display = "none";
@@ -265,8 +371,10 @@ const convert = async () => {
   setProgress(0);
 
   try {
-    setStatus("Lendo metadados do vídeo...", "warn");
-    await extractMeta();
+    if (!Number.isFinite(meta.duration) || !Number.isFinite(meta.width) || !Number.isFinite(meta.height)) {
+      await readVideoMeta();
+      updateUiFile();
+    }
 
     const inName = "input.mp4";
     const paletteName = "palette.png";
@@ -275,15 +383,19 @@ const convert = async () => {
     const vf = buildFilters();
     const dither = ditherEl.value;
     const loop = loopEl.value;
+    const maxColors = getMaxColors();
 
-    setStatus("Gerando paleta (qualidade alta)...", "warn");
+    setStatus(`Preparando arquivo...`, "warn");
+    await ffmpeg.writeFile(inName, await fetchFile(selectedFile));
+
+    setStatus(`Gerando paleta (${maxColors} cores)...`, "warn");
     setProgress(0);
-    await ffmpeg.exec(["-hide_banner", "-i", inName, "-vf", `${vf},palettegen=stats_mode=diff`, paletteName]);
+    await ffmpeg.exec(["-hide_banner","-i",inName,"-vf",`${vf},palettegen=max_colors=${maxColors}:stats_mode=diff`,paletteName]);
 
     setStatus("Convertendo para GIF...", "warn");
     setProgress(0);
     const useFilter = `[0:v]${vf}[x];[x][1:v]paletteuse=dither=${dither}:diff_mode=rectangle`;
-    await ffmpeg.exec(["-hide_banner", "-i", inName, "-i", paletteName, "-lavfi", useFilter, "-loop", loop, outGif]);
+    await ffmpeg.exec(["-hide_banner","-i",inName,"-i",paletteName,"-lavfi",useFilter,"-loop",loop,outGif]);
 
     const data = await ffmpeg.readFile(outGif);
     const blob = new Blob([data.buffer], { type: "image/gif" });
@@ -302,11 +414,12 @@ const convert = async () => {
     setStatus("Pronto. Clique em “Baixar GIF”.", "ok");
     setProgress(1);
   } catch (e) {
-    setStatus("Erro na conversão. Tente reduzir FPS e/ou definir largura máxima.", "err");
+    setStatus("Erro na conversão. Tente reduzir FPS e/ou largura e/ou cores.", "err");
     console.error(e);
     setProgress(0);
   } finally {
     loadBtn.disabled = false;
+    autoBtn.disabled = !selectedFile;
     resetBtn.disabled = false;
     convertBtn.disabled = !(selectedFile && engineLoaded);
   }
@@ -316,5 +429,8 @@ convertBtn.addEventListener("click", convert);
 resetBtn.addEventListener("click", resetAll);
 
 fpsValEl.textContent = fpsEl.value;
+maxColorsValEl.textContent = String(getMaxColors());
+syncPresetFromSlider();
 loadBtn.disabled = false;
+autoBtn.disabled = true;
 setStatus("Selecione um MP4 para começar.");
