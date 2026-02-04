@@ -178,10 +178,10 @@ fileEl.addEventListener("change", (e) => {
 });
 
 const tryLoad = async (base) => {
-  await ffmpeg.load({
-    coreURL: `${base}/ffmpeg-core.js`,
-    wasmURL: `${base}/ffmpeg-core.wasm`
-  });
+  const coreURL = new URL(`${base}/ffmpeg-core.js`, location.href).toString();
+  const wasmURL = new URL(`${base}/ffmpeg-core.wasm`, location.href).toString();
+  const workerURL = new URL(`ffmpeg/worker.js`, location.href).toString();
+  await ffmpeg.load({ coreURL, wasmURL, workerURL });
 };
 
 loadBtn.addEventListener("click", async () => {
